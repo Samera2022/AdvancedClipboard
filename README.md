@@ -23,6 +23,7 @@
 *   **System Tray Integration**: Runs quietly in the background with a system tray icon for easy access to settings and logs.
 *   **Lightweight**: Built with native C++ and Win32 API for maximum performance and minimal resource usage.
 
+
 ## Getting Started
 
 ### Prerequisites
