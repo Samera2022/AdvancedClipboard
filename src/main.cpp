@@ -4,18 +4,23 @@
 #include <variant>
 #include <algorithm>
 #include <shellapi.h> // For tray icon
+#include "update_info.h"
+#include "resource.h" // Include resource definitions
 
 // --- Global Variables & Constants ---
 #define MAX_CLIPBOARD_HISTORY 200
 #define WM_TRAYICON (WM_USER + 1)
 #define HOTKEY_ID_UP 1
 #define HOTKEY_ID_DOWN 2
+#define ID_MENU_EXIT 2
+#define ID_MENU_LOG 3
 
 HINSTANCE g_hInst;
 HWND g_hWnd;
 HWND g_hListBox;
 
 std::vector<std::variant<std::wstring, HBITMAP>> g_clipboardHistory;
+bool g_isRestoringClipboard = false; // Flag to ignore self-triggered clipboard updates
 
 // --- Function Prototypes ---
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -37,6 +42,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpszClassName = CLASS_NAME;
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_APPICON)); // Set the class icon
 
     RegisterClassW(&wc); // Use RegisterClassW for Unicode
 
@@ -82,6 +88,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             break;
 
         case WM_CLIPBOARDUPDATE:
+            if (g_isRestoringClipboard) {
+                g_isRestoringClipboard = false; // Reset the flag and ignore this update
+                break;
+            }
             AddToClipboardHistory();
             UpdateHistoryListbox();
             break;
@@ -114,15 +124,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             break;
 
         case WM_COMMAND:
-            if (LOWORD(wParam) == 2) { // Corresponds to the "Exit" menu item ID
-                DestroyWindow(hWnd);
-            }
-            else if (LOWORD(wParam) == 1 && HIWORD(wParam) == LBN_DBLCLK) { // Double click on listbox item
-                 int selectedIndex = SendMessage(g_hListBox, LB_GETCURSEL, 0, 0);
-                 if (selectedIndex != LB_ERR) {
-                    LoadItemToClipboard(selectedIndex);
-                    ShowWindow(hWnd, SW_HIDE);
-                 }
+            switch(LOWORD(wParam)) {
+                case 1: // Listbox command
+                    if (HIWORD(wParam) == LBN_DBLCLK) { // Double click on listbox item
+                         int selectedIndex = SendMessage(g_hListBox, LB_GETCURSEL, 0, 0);
+                         if (selectedIndex != LB_ERR) {
+                            LoadItemToClipboard(selectedIndex);
+                            ShowWindow(hWnd, SW_HIDE);
+                         }
+                    }
+                    break;
+                case ID_MENU_EXIT: // Exit command
+                    DestroyWindow(hWnd);
+                    break;
+                case ID_MENU_LOG: // Update Log command
+                    {
+                        std::wstring log_content = UpdateInfo::getAllLogsAsString();
+                        MessageBoxW(hWnd, log_content.c_str(), L"更新日志", MB_OK | MB_ICONINFORMATION);
+                    }
+                    break;
             }
             break;
 
@@ -131,7 +151,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 POINT curPoint;
                 GetCursorPos(&curPoint);
                 HMENU hMenu = CreatePopupMenu();
-                AppendMenuW(hMenu, MF_STRING, 2, L"Exit"); // Use AppendMenuW for Unicode
+                AppendMenuW(hMenu, MF_STRING, ID_MENU_LOG, L"更新日志");
+                AppendMenuW(hMenu, MF_STRING, ID_MENU_EXIT, L"Exit");
                 SetForegroundWindow(hWnd); // Necessary to make the menu disappear correctly
                 TrackPopupMenu(hMenu, TPM_BOTTOMALIGN | TPM_LEFTALIGN, curPoint.x, curPoint.y, 0, hWnd, NULL);
                 DestroyMenu(hMenu);
@@ -165,7 +186,8 @@ void CreateTrayIcon(HWND hWnd) {
     nid.uID = 1;
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAYICON;
-    nid.hIcon = LoadIcon(NULL, IDI_APPLICATION); // Replace with a custom icon later
+    // Load the icon from the application's resources
+    nid.hIcon = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_APPICON));
     wcscpy_s(nid.szTip, L"Advanced Clipboard");
     Shell_NotifyIconW(NIM_ADD, &nid); // Use Shell_NotifyIconW for Unicode
     SetWindowLongPtrW(hWnd, GWLP_USERDATA, (LONG_PTR)&nid);
@@ -229,9 +251,21 @@ void UpdateHistoryListbox() {
 void LoadItemToClipboard(int selectedIndex) {
     if (selectedIndex < 0 || selectedIndex >= g_clipboardHistory.size()) return;
 
-    const auto& item = g_clipboardHistory[selectedIndex];
+    // 1. Get the item and remove it from its current position
+    auto item = g_clipboardHistory[selectedIndex];
+    g_clipboardHistory.erase(g_clipboardHistory.begin() + selectedIndex);
 
-    if (!OpenClipboard(g_hWnd)) return;
+    // 2. Insert the item at the beginning of the history (making it the most recent)
+    g_clipboardHistory.insert(g_clipboardHistory.begin(), item);
+
+    // 3. Set the flag to ignore the upcoming clipboard update that we are about to cause
+    g_isRestoringClipboard = true;
+
+    // 4. Open clipboard and set the data
+    if (!OpenClipboard(g_hWnd)) {
+        g_isRestoringClipboard = false; // Reset flag on failure
+        return;
+    }
     EmptyClipboard();
 
     if (std::holds_alternative<std::wstring>(item)) {
@@ -239,6 +273,7 @@ void LoadItemToClipboard(int selectedIndex) {
         HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, (text.length() + 1) * sizeof(wchar_t));
         if (!hg) {
             CloseClipboard();
+            g_isRestoringClipboard = false; // Reset flag on failure
             return;
         }
         memcpy(GlobalLock(hg), text.c_str(), (text.length() + 1) * sizeof(wchar_t));
@@ -253,6 +288,10 @@ void LoadItemToClipboard(int selectedIndex) {
     }
 
     CloseClipboard();
+
+    // 5. Update the listbox UI to reflect the new order
+    UpdateHistoryListbox();
+    // The WM_CLIPBOARDUPDATE message will be processed after this, but our flag will make it do nothing.
 }
 
 void ShowPopupWindow() {

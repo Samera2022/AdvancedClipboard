@@ -1,0 +1,6 @@
+// Include the resource header file from the parent's 'include' directory.
+#include "../include/resource.h"
+
+// Associate the icon ID with the actual icon file.
+// The path is relative to this .rc file's location in the 'src' directory.
+IDI_APPICON ICON "../assets/AdvancedClipboard.ico"
