@@ -67,6 +67,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Message loop
     MSG msg = {};
     while (GetMessage(&msg, NULL, 0, 0)) {
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_RETURN) {
+            if (GetFocus() == g_hListBox) {
+                int selectedIndex = SendMessage(g_hListBox, LB_GETCURSEL, 0, 0);
+                if (selectedIndex != LB_ERR) {
+                    LoadItemToClipboard(selectedIndex);
+                    ShowWindow(g_hWnd, SW_HIDE);
+                }
+                continue;
+            }
+        }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
