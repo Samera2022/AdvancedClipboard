@@ -24,6 +24,7 @@ bool g_isRestoringClipboard = false; // Flag to ignore self-triggered clipboard 
 
 // --- Function Prototypes ---
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK AboutDlgProc(HWND, UINT, WPARAM, LPARAM);
 void CreateTrayIcon(HWND hWnd);
 void RegisterHotKeys(HWND hWnd);
 void AddToClipboardHistory();
@@ -153,14 +154,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                         MessageBoxW(hWnd, log_content.c_str(), L"更新日志", MB_OK | MB_ICONINFORMATION);
                     }
                     break;
+                case ID_MENU_ABOUT:
+                    DialogBox(g_hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, AboutDlgProc);
+                    break;
             }
             break;
 
         case WM_TRAYICON:
-            if (lParam == WM_RBUTTONUP) {
+            if (lParam == WM_LBUTTONUP) {
+                ShowPopupWindow();
+            } else if (lParam == WM_RBUTTONUP) {
                 POINT curPoint;
                 GetCursorPos(&curPoint);
                 HMENU hMenu = CreatePopupMenu();
+                AppendMenuW(hMenu, MF_STRING, ID_MENU_ABOUT, L"关于作者");
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_LOG, L"更新日志");
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_EXIT, L"Exit");
                 SetForegroundWindow(hWnd); // Necessary to make the menu disappear correctly
@@ -186,6 +193,32 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     }
     return 0;
 }
+
+// --- About Dialog Procedure ---
+INT_PTR CALLBACK AboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+        case WM_INITDIALOG:
+        {
+            SetWindowTextW(hDlg, L"关于作者");
+            const wchar_t* aboutText = L"你好，我是AdvancedClipboard的作者Samera2022。首先感谢您的使用，谨在此致以最为诚挚的欢迎。\n"
+                                     L"你可以通过B站UID: 583460263 / QQ: 3517085924来找到我来反馈各类使用问题，当然闲聊之类的也是肯定可以的！不过反馈使用问题还是建议在Github提交Issues，这样我能更及时看得到。\n"
+                                     L"本项目的地址为https://github.com/Samera2022/AdvancedClipboard，如果你觉得本项目比较有趣的话还请不要吝啬你的star啦！";
+            SetDlgItemTextW(hDlg, IDC_ABOUT_TEXT, aboutText);
+            return (INT_PTR)TRUE;
+        }
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDC_GITHUB_BUTTON) {
+                ShellExecuteW(NULL, L"open", L"https://github.com/Samera2022/AdvancedClipboard", NULL, NULL, SW_SHOWNORMAL);
+            }
+            if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+                EndDialog(hDlg, LOWORD(wParam));
+                return (INT_PTR)TRUE;
+            }
+            break;
+    }
+    return (INT_PTR)FALSE;
+}
+
 
 // --- Feature Implementations ---
 
