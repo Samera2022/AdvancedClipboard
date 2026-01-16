@@ -14,7 +14,7 @@ const std::vector<UpdateInfo>& UpdateInfo::getAllLogs() {
     // This static vector will be initialized only once, the first time this function is called.
     // The newest log should be placed at the top of this list.
     static const std::vector<UpdateInfo> all_logs = {
-        {L"0.0.1", L"2026-01-15 15:30",
+        {L"0.1.0", L"2026-01-15 15:30",
          L"## [Added]\n"
          L" - 实现剪贴板历史记录功能 (文本和图片)。\n"
          L" - 实现系统托盘图标及退出菜单。\n"
